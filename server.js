@@ -25,6 +25,30 @@ app.use(express.json());
 // ✅ Serve static uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// ✅ Add Health Check Route (ADD THIS)
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    message: "Infinity backend is running successfully!",
+    timestamp: new Date().toISOString(),
+    database: "Connected"
+  });
+});
+
+// ✅ Add Root Route (ADD THIS)
+app.get("/", (req, res) => {
+  res.json({
+    message: "Infinity Social Media API",
+    status: "Running", 
+    version: "1.0.0",
+    endpoints: {
+      auth: "/api/auth",
+      users: "/api/users",
+      posts: "/api/posts",
+      reels: "/api/reels"
+    }
+  });
+});
 
 // Routes
 app.use("/api/posts", postRoutes);
@@ -33,10 +57,18 @@ app.use("/api/users", userRoutes);
 app.use("/api/users", followRoutes);
 app.use("/api/reels", reelRoutes);
 
-
+// ✅ Fix MongoDB connection with error handling
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err));
+  .catch((err) => {
+    console.error("❌ MongoDB connection error:", err.message);
+    process.exit(1);
+  });
 
-const PORT = process.env.PORT;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// ✅ Fix Port with fallback (CHANGE THIS LINE)
+const PORT = process.env.PORT || 10000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
