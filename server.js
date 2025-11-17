@@ -22,8 +22,6 @@ const __dirname = path.dirname(__filename);
 app.use(cors());
 app.use(express.json());
 
-// ✅ Serve static uploads
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ✅ Add Health Check Route (ADD THIS)
 app.get("/api/health", (req, res) => {

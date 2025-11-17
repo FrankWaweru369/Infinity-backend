@@ -2,3 +2,11 @@ node_modules/
 .env
 .DS_Store
 *.log
+uploads/
+test.js
+testFetchUser.js
+testMongo.js
+deleteUsers.js
+passwordcomparer.js
+-H
+-d

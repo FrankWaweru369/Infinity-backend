@@ -1,36 +1,58 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs-extra";
+import { storage } from "../config/cloudinary.js";
 
 const router = express.Router();
 
-// Ensure uploads folder exists
-const uploadDir = path.resolve("uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-// Configure multer for local storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
+// Use Cloudinary storage instead of local storage
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 35 * 1024 * 1024, // 35MB limit
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
+  fileFilter: (req, file, cb) => {
+    // Check if file is an image or video
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image and video files are allowed!'), false);
+    }
+  }
 });
-
-const upload = multer({ storage });
 
 // POST /api/upload
 router.post("/", upload.single("image"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No image uploaded" });
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Cloudinary provides the URL in req.file.path
+    const imageUrl = req.file.path;
+    
+    res.json({ 
+      success: true,
+      imageUrl: imageUrl,
+      message: "File uploaded successfully to cloud storage"
+    });
+    
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ 
+      error: "Upload failed",
+      message: error.message 
+    });
   }
-  const imageUrl = `http://localhost:5000/uploads/${req.file.filename}`;
-  res.json({ imageUrl });
+});
+
+// Handle multer errors
+router.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: "File too large. Maximum size is 10MB" });
+    }
+  }
+  res.status(400).json({ error: error.message });
 });
 
 export default router;
