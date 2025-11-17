@@ -2,15 +2,10 @@ import express from "express";
 import multer from "multer";
 import protect from "../middleware/authMiddleware.js";
 import {createPost, getPosts, toggleLike, addComment, updatePost, deletePost,} from "../controllers/post.controller.js";
+import { storage } from "../config/cloudinary.js";
 
 const router = express.Router();
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  },
-});
 const upload = multer({ storage });
 
 // Routes

@@ -4,37 +4,12 @@ import auth from '../middleware/authMiddleware.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { storage } from "../config/cloudinary.js";
 
 
 const router = express.Router();
 
-// Configure multer for video uploads
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/reels/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'reel-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 50 * 1024 * 1024 // 50mb limit
-  },
-  fileFilter: (req, file, cb) => {
-    
-    if (file.mimetype.startsWith('video/') || 
-        file.mimetype.startsWith('image/') ||
-        file.originalname.match(/\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v)$/i)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`File type ${file.mimetype} not allowed! Only video files are allowed.`), false);
-    }
-  }
-});
+const upload = multer({ storage });
 
 // Get all reels (paginated)
 router.get('/', async (req, res) => {
@@ -110,7 +85,7 @@ router.post('/', auth, upload.single('video'), async (req, res) => {
 
     
     const reel = new Reel({
-      videoUrl: `/uploads/reels/${req.file.filename}`,
+      videoUrl: req.file.path,
       caption,
       music: music || 'Original Sound',
       author: req.userId,

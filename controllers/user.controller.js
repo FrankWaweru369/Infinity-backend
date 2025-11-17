@@ -3,6 +3,7 @@ import User from "../models/user.js";
 import path from "path";
 import fs from "fs";
 
+
 export const getUserByUsername = async (req, res) => {
   try {
     const { username } = req.params;
@@ -118,7 +119,7 @@ export const updateProfile = async (req, res) => {
         }
 
         // Save new path
-        updateData.profilePicture = `/uploads/${req.files.profilePicture[0].filename}`;
+        updateData.profilePicture = req.files.profilePicture[0].path;
       }
 
       // Cover Photo
@@ -130,7 +131,7 @@ export const updateProfile = async (req, res) => {
         }
 
         // Save new path
-        updateData.coverPhoto = `/uploads/${req.files.coverPhoto[0].filename}`;
+        updateData.coverPhoto = req.files.coverPhoto[0].path;
       }
     }
 

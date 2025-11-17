@@ -10,7 +10,7 @@ export const createPost = async (req, res) => {
       author: req.user._id,
       title: req.body.title,
       content: req.body.content,
-      image: req.file ? `/uploads/${req.file.filename}` : null,
+      image: req.file ? req.file.path : null,	
     });
 
     await post.save();
@@ -116,7 +116,7 @@ export const updatePost = async (req, res) => {
         const oldPath = path.join("uploads", path.basename(post.image));
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
-      post.image = `/uploads/${req.file.filename}`;
+      post.image = req.file.path;
     }
 
     // ✅ Update text content
