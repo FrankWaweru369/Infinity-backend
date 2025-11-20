@@ -193,7 +193,7 @@ router.delete('/:id', auth, async (req, res) => {
 
    const videoPath = path.join(__dirname, '..', reel.videoUrl);
 if (fs.existsSync(videoPath)) {
-  fs.unlinkSync(videoPath);
+  
 }
 
   } catch (error) {

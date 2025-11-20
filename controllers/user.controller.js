@@ -115,7 +115,7 @@ export const updateProfile = async (req, res) => {
         // Delete old profile picture
         if (user.profilePicture) {
           const oldPath = path.join("uploads", path.basename(user.profilePicture));
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+
         }
 
         // Save new path
@@ -127,7 +127,7 @@ export const updateProfile = async (req, res) => {
         // Delete old cover photo
         if (user.coverPhoto) {
           const oldPath = path.join("uploads", path.basename(user.coverPhoto));
-          if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+          
         }
 
         // Save new path

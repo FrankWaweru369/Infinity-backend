@@ -2,6 +2,7 @@ import Post from "../models/post.js";
 import User from "../models/user.js";
 import path from "path";
 import fs from "fs";
+import { v2 as cloudinary } from 'cloudinary';
 
 // ✅ Create Post
 export const createPost = async (req, res) => {
@@ -97,11 +98,9 @@ await post.save();
 
 // ✅ Update Post
 export const updatePost = async (req, res) => {
-	
-  try { 
-    
+  try {
     const { id } = req.params;
-    const { content, text } = req.body;
+    const { content, text, removeImage } = req.body;
 
     const post = await Post.findById(id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -110,29 +109,46 @@ export const updatePost = async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // ✅ Handle new image
-    if (req.file) {
+    // Handle image removal
+    if (removeImage === "true") {
       if (post.image) {
-        const oldPath = path.join("uploads", path.basename(post.image));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        const publicId = post.image.split('/').pop().split('.')[0];
+        try {
+          await cloudinary.uploader.destroy(publicId);
+        } catch (cloudinaryError) {
+          // Continue even if Cloudinary deletion fails
+        }
+        post.image = null;
+      }
+    }
+    // Handle new image upload
+    else if (req.file) {
+      // Delete old image from Cloudinary if exists
+      if (post.image) {
+        const publicId = post.image.split('/').pop().split('.')[0];
+        try {
+          await cloudinary.uploader.destroy(publicId);
+        } catch (cloudinaryError) {
+          // Continue even if Cloudinary deletion fails
+        }
       }
       post.image = req.file.path;
     }
 
-    // ✅ Update text content
+    // Update text content
     if (content || text) post.content = content || text;
 
     await post.save();
+    
     await post.populate([
-  { path: "author", select: "username email profilePicture" },
-  { path: "comments.user", select: "username profilePicture" },
-  { path: "likes", select: "username profilePicture" },
-]);
-
+      { path: "author", select: "username email profilePicture" },
+      { path: "comments.user", select: "username profilePicture" },
+      { path: "likes", select: "username profilePicture" },
+    ]);
 
     res.status(200).json({ message: "Post updated", post });
   } catch (error) {
-    console.error("❌ Update error:", error);
+    console.error("Update error:", error);
     res.status(500).json({ error: "Server error updating post" });
   }
 };
@@ -147,11 +163,6 @@ export const deletePost = async (req, res) => {
     if (post.author.toString() !== req.userId.toString())
       return res.status(403).json({ error: "Not authorized" });
 
-    // ✅ Delete image file if exists
-    if (post.image) {
-      const filePath = path.resolve(post.image);
-      fs.unlink(filePath, (err) => err && console.error("Error deleting image:", err));
-    }
 
     await post.deleteOne();
     res.status(200).json({ message: "Post deleted successfully" });
