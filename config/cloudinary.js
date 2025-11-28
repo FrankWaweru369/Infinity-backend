@@ -9,9 +9,21 @@ cloudinary.config({
 
 export const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
-  params: {
-    folder: 'infinity-platform',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov'],
+  params: async (req, file) => {
+    
+    let resource_type = 'auto';
+    if (file.mimetype.startsWith('video/')) {
+      resource_type = 'video';
+    } else if (file.mimetype.startsWith('image/')) {
+      resource_type = 'image';
+    }
+
+    return {
+      folder: 'infinity-platform/reels',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'webm'],
+      resource_type: resource_type, 
+      public_id: `reel-${Date.now()}-${Math.round(Math.random() * 1E9)}`
+    };
   },
 });
 
