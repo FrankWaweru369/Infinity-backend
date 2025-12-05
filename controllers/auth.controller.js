@@ -4,11 +4,26 @@ import crypto from "crypto";
 import User from "../models/user.js";
 import nodemailer from "nodemailer";
 
-const JWT_SECRET = process.env.JWT_SECRET || "7169";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error("⚠️ WARNING: JWT_SECRET is not set in environment variables!");
+  // Don't use a default in production - force it to be set
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be set in production environment");
+  }
+}
 
-// 🔹 Helper: generate token
-const generateToken = (id) => {
-  return jwt.sign({ userId: id }, JWT_SECRET, { expiresIn: "7d" });
+// 🔹 Helper: generate token with consistent payload
+const generateToken = (userId) => {
+  if (!JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured");
+  }
+  
+  return jwt.sign(
+    { id: userId }, // Consistent payload structure
+    JWT_SECRET, 
+    { expiresIn: "7d" }
+  );
 };
 
 // 🟢 Register
@@ -16,23 +31,37 @@ export const registerUser = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
+    // Validate required fields
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: "All fields are required" });
+    }
+
     // Check if email exists
     const existingEmail = await User.findOne({ email });
-    if (existingEmail) return res.status(400).json({ error: "Email already in use" });
+    if (existingEmail) {
+      return res.status(400).json({ error: "Email already in use" });
+    }
 
     // Check if username exists
     const existingUsername = await User.findOne({ username });
-    if (existingUsername) return res.status(400).json({ error: "Username already in use" });
+    if (existingUsername) {
+      return res.status(400).json({ error: "Username already in use" });
+    }
 
     // Create new user
     const newUser = new User({ username, email, password });
     await newUser.save();
 
+    // Generate token
     const token = generateToken(newUser._id);
+
+    // Decode token to get expiry for client
+    const decoded = jwt.decode(token);
 
     res.status(201).json({
       message: "User registered successfully",
       token,
+      expiresAt: decoded.exp, // Send expiry timestamp
       user: {
         id: newUser._id,
         username: newUser.username,
@@ -42,7 +71,10 @@ export const registerUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Registration error:", error);
-    res.status(500).json({ error: "Server error during registration" });
+    res.status(500).json({ 
+      error: "Server error during registration",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
@@ -50,6 +82,11 @@ export const registerUser = async (req, res) => {
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
 
     // 1️⃣ Check if user exists
     const user = await User.findOne({ email });
@@ -64,22 +101,29 @@ export const loginUser = async (req, res) => {
     }
 
     // 3️⃣ Generate token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = generateToken(user._id);
+    
+    // Decode token to get expiry
+    const decoded = jwt.decode(token);
 
     res.json({
       message: "Login successful",
       token,
-      user:{
-	      _id:user._id,
-	      name:user.name},
+      expiresAt: decoded.exp, // Send expiry timestamp
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        name: user.name || user.username,
+        profilePicture: user.profilePicture,
+      },
     });
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      message: "Server error during login",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
@@ -87,14 +131,99 @@ export const loginUser = async (req, res) => {
 export const getCurrentUser = async (req, res) => {
   try {
     if (!req.user) {
-      return res.status(401).json({ message: "Not authorized" });
+      return res.status(401).json({ 
+        message: "Not authorized",
+        code: "NO_USER_IN_REQUEST" 
+      });
     }
 
     const user = await User.findById(req.user._id).select("-password");
-    res.status(200).json(user);
+    
+    if (!user) {
+      return res.status(404).json({ 
+        message: "User not found",
+        code: "USER_NOT_FOUND" 
+      });
+    }
+
+    res.status(200).json({
+      user,
+      tokenInfo: {
+        expiresAt: req.user.exp // From JWT payload if available
+      }
+    });
   } catch (error) {
     console.error("Get current user error:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ 
+      message: "Server error",
+      code: "SERVER_ERROR",
+      details: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+// 🟢 Optional: Token validation endpoint
+export const validateToken = async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    
+    if (!token) {
+      return res.status(401).json({ 
+        valid: false, 
+        message: "No token provided" 
+      });
+    }
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      
+      // Check if user still exists
+      const user = await User.findById(decoded.id).select("-password");
+      if (!user) {
+        return res.status(401).json({ 
+          valid: false, 
+          message: "User no longer exists" 
+        });
+      }
+
+      return res.json({
+        valid: true,
+        user: {
+          id: user._id,
+          username: user.username,
+          email: user.email,
+        },
+        expiresAt: decoded.exp,
+        expiresIn: Math.max(0, decoded.exp - Math.floor(Date.now() / 1000))
+      });
+    } catch (verifyError) {
+      console.error("Token validation error:", verifyError.name);
+      
+      if (verifyError.name === "TokenExpiredError") {
+        return res.status(401).json({ 
+          valid: false, 
+          message: "Token expired",
+          code: "TOKEN_EXPIRED",
+          expiredAt: verifyError.expiredAt
+        });
+      }
+      
+      if (verifyError.name === "JsonWebTokenError") {
+        return res.status(401).json({ 
+          valid: false, 
+          message: "Invalid token",
+          code: "TOKEN_INVALID"
+        });
+      }
+      
+      throw verifyError;
+    }
+  } catch (error) {
+    console.error("Validate token endpoint error:", error);
+    res.status(500).json({ 
+      valid: false, 
+      message: "Token validation failed" 
+    });
   }
 };
 

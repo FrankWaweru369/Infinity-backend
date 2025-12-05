@@ -3,6 +3,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import path from "path";
+import analyticsRoutes from "./routes/analytics.routes.js";
+import {analyticsMiddleware} from "./middleware/analyticsMiddleware.js";
+
 import { fileURLToPath } from "url";
 
 
@@ -23,6 +26,7 @@ const __dirname = path.dirname(__filename);
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(analyticsMiddleware);
 
 
 app.get("/api/health", (req, res) => {
@@ -56,6 +60,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/users", followRoutes);
 app.use("/api/reels", reelRoutes);
 app.use("/api/explore", exploreRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 
 mongoose.connect(process.env.MONGO_URI)

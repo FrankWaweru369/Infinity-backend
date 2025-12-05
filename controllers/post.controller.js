@@ -45,27 +45,61 @@ export const getPosts = async (req, res) => {
 // ✅ Toggle Like
 export const toggleLike = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
+    const postId = req.params.id;
     const userId = req.user._id;
-    const index = post.likes.indexOf(userId);
-
-    if (index === -1) post.likes.push(userId);
-    else post.likes.splice(index, 1);
-
-    await post.save();
-
-        // Re-fetch populated post (safest)
-    const populatedPost = await Post.findById(req.params.id)
+    
+    
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ 
+        message: "Post not found",
+        code: "POST_NOT_FOUND"
+      });
+    }
+    
+    const hasLiked = post.likes.includes(userId);
+    
+    
+    const updateOperation = hasLiked 
+      ? { $pull: { likes: userId } }
+      : { $addToSet: { likes: userId } };
+    
+    const updatedPost = await Post.findByIdAndUpdate(
+      postId,
+      updateOperation,
+      { new: true, runValidators: true }
+    );
+    
+    if (!updatedPost) {
+      return res.status(404).json({ 
+        message: "Post not found after update",
+        code: "POST_UPDATE_FAILED"
+      });
+    }
+    
+    
+    const populatedPost = await Post.findById(updatedPost._id)
       .populate("author", "username email profilePicture")
-      .populate("likes", "username profilePicture")               
-      .populate("comments.user", "username email profilePicture");
-
-    res.json(populatedPost);
+      .populate("likes", "username profilePicture")
+      .populate({
+        path: "comments.user",
+        select: "username email profilePicture"
+      });
+    
+    res.json({
+      success: true,
+      message: hasLiked ? "Post unliked" : "Post liked",
+      liked: !hasLiked,
+      post: populatedPost,
+      likesCount: populatedPost.likes.length
+    });
+    
   } catch (err) {
-    console.error("❌ Error liking post:", err);
-    res.status(500).json({ message: "Error liking post" });
+    console.error("❌ Error in toggleLike:", err);
+    res.status(500).json({ 
+      message: "Error updating like",
+      code: "LIKE_ERROR"
+    });
   }
 };
 
