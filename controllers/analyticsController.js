@@ -133,8 +133,8 @@ export const getFullAnalytics = async (req, res) => {
     // Top 10 Active Users by total visits
     // -----------------------------
     const mostActiveUsersAgg = await PageVisit.aggregate([
-      { $match: { user: { $ne: null } } },        // Only count visits by logged users
-      { $group: { _id: "$user", totalVisits: { $sum: 1 } } }, // Count visits per user
+      { $match: { user: { $ne: null } } },
+      { $group: { _id: "$user", totalVisits: { $sum: 1 } } },
       { $sort: { totalVisits: -1 } },
       { $limit: 10 }
     ]);

@@ -15,6 +15,7 @@ import userRoutes from "./routes/user.routes.js";
 import followRoutes from "./routes/follow.routes.js";
 import reelRoutes from "./routes/reels.routes.js";
 import exploreRoutes from "./routes/explore.routes.js";
+import videoOptimizerRoutes from "./routes/videoOptimizerRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -38,7 +39,7 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// ✅ Add Root Route (ADD THIS)
+
 app.get("/", (req, res) => {
   res.json({
     message: "Infinity Social Media API",
@@ -61,7 +62,7 @@ app.use("/api/users", followRoutes);
 app.use("/api/reels", reelRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/analytics", analyticsRoutes);
-
+app.use("/api/videos", videoOptimizerRoutes);
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))

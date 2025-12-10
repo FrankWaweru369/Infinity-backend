@@ -7,20 +7,20 @@ import nodemailer from "nodemailer";
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   console.error("⚠️ WARNING: JWT_SECRET is not set in environment variables!");
-  // Don't use a default in production - force it to be set
+
   if (process.env.NODE_ENV === "production") {
     throw new Error("JWT_SECRET must be set in production environment");
   }
 }
 
-// 🔹 Helper: generate token with consistent payload
+// 🔹 Helper: generate token
 const generateToken = (userId) => {
   if (!JWT_SECRET) {
     throw new Error("JWT_SECRET is not configured");
   }
   
   return jwt.sign(
-    { id: userId }, // Consistent payload structure
+    { id: userId },
     JWT_SECRET, 
     { expiresIn: "7d" }
   );
@@ -61,7 +61,7 @@ export const registerUser = async (req, res) => {
     res.status(201).json({
       message: "User registered successfully",
       token,
-      expiresAt: decoded.exp, // Send expiry timestamp
+      expiresAt: decoded.exp,
       user: {
         id: newUser._id,
         username: newUser.username,
@@ -109,7 +109,7 @@ export const loginUser = async (req, res) => {
     res.json({
       message: "Login successful",
       token,
-      expiresAt: decoded.exp, // Send expiry timestamp
+      expiresAt: decoded.exp,
       user: {
         id: user._id,
         username: user.username,
@@ -149,7 +149,7 @@ export const getCurrentUser = async (req, res) => {
     res.status(200).json({
       user,
       tokenInfo: {
-        expiresAt: req.user.exp // From JWT payload if available
+        expiresAt: req.user.exp
       }
     });
   } catch (error) {

@@ -51,7 +51,18 @@ const reelSchema = new mongoose.Schema({
   shares: {
     type: Number,
     default: 0
-  }
+  },
+	videoUrls: {
+    original: String,
+    high: String,
+    medium: String,
+    low: String
+  },
+  isOptimized: {
+    type: Boolean,
+    default: false
+  },
+  optimizedAt: Date
 }, {
   timestamps: true
 });
