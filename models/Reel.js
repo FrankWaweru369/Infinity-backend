@@ -31,14 +31,68 @@ const reelSchema = new mongoose.Schema({
     ref: 'User'
   }],
   comments: [{
+    // Each comment gets a unique ID
+    _id: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: () => new mongoose.Types.ObjectId()
+    },
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: 'User',
+      required: true
     },
     text: {
       type: String,
       required: true
     },
+    
+    // NEW: Comment likes
+    likes: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    }],
+    likeCount: {
+      type: Number,
+      default: 0
+    },
+    
+    // NEW: For recomments (nested comments)
+    parentCommentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
+    },
+    recomments: [{
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: () => new mongoose.Types.ObjectId()
+      },
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+      },
+      text: {
+        type: String,
+        required: true
+      },
+      likes: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }],
+      likeCount: {
+        type: Number,
+        default: 0
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
+    }],
+    recommentCount: {
+      type: Number,
+      default: 0
+    },
+    
     createdAt: {
       type: Date,
       default: Date.now
@@ -52,7 +106,7 @@ const reelSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-	videoUrls: {
+  videoUrls: {
     original: String,
     high: String,
     medium: String,
@@ -65,6 +119,23 @@ const reelSchema = new mongoose.Schema({
   optimizedAt: Date
 }, {
   timestamps: true
+});
+
+// Middleware to update counts before saving
+reelSchema.pre('save', function(next) {
+  // Update comment like counts and recomment counts
+  if (this.isModified('comments')) {
+    this.comments.forEach(comment => {
+      comment.likeCount = comment.likes?.length || 0;
+      comment.recommentCount = comment.recomments?.length || 0;
+      
+      // Also update recomment like counts
+      comment.recomments.forEach(recomment => {
+        recomment.likeCount = recomment.likes?.length || 0;
+      });
+    });
+  }
+  next();
 });
 
 // Add index for better performance

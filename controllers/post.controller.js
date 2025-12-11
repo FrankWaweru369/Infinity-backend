@@ -29,16 +29,31 @@ export const createPost = async (req, res) => {
 // ✅ Get all posts (Newest first)
 export const getPosts = async (req, res) => {
   try {
-    const posts = await Post.find()
-      .populate("author", "username email profilePicture")
-      .populate("likes", "username profilePicture")                
-      .populate("comments.user", "username email profilePicture")
+    const posts = await Post.find({})
+      .populate('author', 'username profilePicture')
+      .populate('likes', 'username profilePicture')
+      .populate({
+        path: 'comments.user',
+        select: 'username profilePicture'
+      })
+      .populate({
+        path: 'comments.likes',
+        select: 'username profilePicture'
+      })
+      .populate({
+        path: 'comments.recomments.user',
+        select: 'username profilePicture'
+      })
+      .populate({
+        path: 'comments.recomments.likes',
+        select: 'username profilePicture'
+      })
       .sort({ createdAt: -1 });
 
     res.json(posts);
-  } catch (err) {
-    console.error("❌ Error fetching posts:", err);
-    res.status(500).json({ message: "Error fetching posts" });
+  } catch (error) {
+    console.error('Get posts error:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 };
 

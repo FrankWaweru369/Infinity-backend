@@ -16,6 +16,8 @@ import followRoutes from "./routes/follow.routes.js";
 import reelRoutes from "./routes/reels.routes.js";
 import exploreRoutes from "./routes/explore.routes.js";
 import videoOptimizerRoutes from "./routes/videoOptimizerRoutes.js";
+import commentRoutes from './routes/comment.routes.js';
+
 
 dotenv.config();
 const app = express();
@@ -63,6 +65,7 @@ app.use("/api/reels", reelRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/videos", videoOptimizerRoutes);
+app.use('/api', commentRoutes);
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
