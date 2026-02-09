@@ -3,7 +3,8 @@ import User from "../models/user.js";
 import path from "path";
 import fs from "fs";
 import { v2 as cloudinary } from 'cloudinary';
-
+import { notifyLike } from "../utils/notify.js";
+import { notifyComment } from "../utils/notify.js";
 // ✅ Create Post
 export const createPost = async (req, res) => {
   try {
@@ -100,6 +101,14 @@ export const toggleLike = async (req, res) => {
         path: "comments.user",
         select: "username email profilePicture"
       });
+
+	  if (!hasLiked) {
+  await notifyLike(
+    post.author,
+    userId,
+    post._id
+  );
+}
     
     res.json({
       success: true,
@@ -130,6 +139,12 @@ export const addComment = async (req, res) => {
     // Step 2: push comment
 post.comments.push({ user: req.user._id, text });
 await post.save();
+
+await notifyComment(
+  post.author,
+  req.user._id,
+  post._id
+);
 
     // Step 3: re-fetch the post and populate everything
     const populatedPost = await Post.findById(req.params.id)

@@ -1,4 +1,5 @@
 import User from "../models/user.js";
+import Notification from "../models/Notification.js";
 
 // ➕ Follow a user
 export const followUser = async (req, res) => {
@@ -21,14 +22,24 @@ export const followUser = async (req, res) => {
       return res.status(400).json({ error: "Already following this user" });
     }
 
+    // Update followers/following
     targetUser.followers.push(currentUserId);
     currentUser.following.push(targetUserId);
 
     await targetUser.save();
     await currentUser.save();
 
+    // ✅ Create a notification for the followed user
+    await Notification.create({
+      recipient: targetUserId,
+      sender: currentUserId,
+      type: "FOLLOW",
+      message: `${currentUser.username} started following you`
+    });
+
     res.json({ message: "Followed successfully" });
   } catch (err) {
+    console.error("❌ Follow error:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
