@@ -3,8 +3,8 @@ import mongoose from "mongoose";
 const postSchema = new mongoose.Schema(
   {
     author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    content: { type: String, trim: true, maxlength: 500 },
-    image: { type: String },
+    content: { type: String, trim: true, maxlength: 2000 },
+    images: [{ type: String }],
     voiceUrl: { type: String },
     likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     comments: [

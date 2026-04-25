@@ -8,6 +8,7 @@ import {
   addComment,
   updatePost,
   deletePost,
+  getSinglePost,
 } from "../controllers/post.controller.js";
 import {
   likePostComment,
@@ -20,17 +21,22 @@ const router = express.Router();
 
 const upload = multer({ storage });
 
-// Post routes
-router.post("/", protect, upload.single("image"), createPost);
+// ✅ POSTS (multi-image enabled)
+router.post("/", protect, upload.any(), createPost);
 router.get("/", protect, getPosts);
 router.put("/:id/like", protect, toggleLike);
 router.post("/:id/comment", protect, addComment);
-router.put("/:id", protect, upload.single("image"), updatePost);
+
+// ✅ UPDATE POST (multi-image enabled)
+router.put("/:id", protect, upload.array("images", 10), updatePost);
+
 router.delete("/:id", protect, deletePost);
 
-// Nested comment routes
+// COMMENTS
 router.put("/:postId/comments/:commentId/like", protect, likePostComment);
 router.post("/:postId/comments/:commentId/recomment", protect, addPostRecomment);
 router.put("/:postId/comments/:commentId/recomments/:recommentId/like", protect, likePostRecomment);
+
+router.get("/:id", protect, getSinglePost);
 
 export default router;

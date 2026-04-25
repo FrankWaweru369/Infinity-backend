@@ -21,26 +21,25 @@ const upload = multer({
 });
 
 // POST /api/upload
-router.post("/", upload.single("image"), (req, res) => {
+router.post("/", upload.array("images", 10), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "No files uploaded" });
     }
 
-    // Cloudinary provides the URL in req.file.path
-    const imageUrl = req.file.path;
-    
-    res.json({ 
+    const imageUrls = req.files.map(file => file.path);
+
+    res.json({
       success: true,
-      imageUrl: imageUrl,
-      message: "File uploaded successfully to cloud storage"
+      imageUrls,
+      message: "Files uploaded successfully to cloud storage"
     });
-    
+
   } catch (error) {
     console.error("Upload error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Upload failed",
-      message: error.message 
+      message: error.message
     });
   }
 });
@@ -49,7 +48,7 @@ router.post("/", upload.single("image"), (req, res) => {
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: "File too large. Maximum size is 10MB" });
+      return res.status(400).json({ error: "File too large. Maximum size is 35MB" });
     }
   }
   res.status(400).json({ error: error.message });

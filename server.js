@@ -18,6 +18,8 @@ import exploreRoutes from "./routes/explore.routes.js";
 import videoOptimizerRoutes from "./routes/videoOptimizerRoutes.js";
 import commentRoutes from './routes/comment.routes.js';
 import notificationRoutes from "./routes/notification.routes.js";
+import { startRandomSuggestionJob } from "./jobs/randomSuggestionJob.js";
+import { startInactiveReminderJob } from "./jobs/inactiveReminderJob.js";
 
 
 dotenv.config();
@@ -68,6 +70,9 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/videos", videoOptimizerRoutes);
 app.use('/api', commentRoutes);
 app.use("/api/notifications", notificationRoutes);
+
+startRandomSuggestionJob();
+startInactiveReminderJob();
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))

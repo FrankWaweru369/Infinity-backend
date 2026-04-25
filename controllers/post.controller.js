@@ -5,19 +5,27 @@ import fs from "fs";
 import { v2 as cloudinary } from 'cloudinary';
 import { notifyLike } from "../utils/notify.js";
 import { notifyComment } from "../utils/notify.js";
-// ✅ Create Post
+import { createNotification } from "../services/notificationService.js";
+import { sendPushNotification } from "../services/pushNotificationService.js";
 export const createPost = async (req, res) => {
   try {
+    let imageUrls = [];
+
+    // ✅ If using multer + cloudinary OR local files
+    if (req.files && req.files.length > 0) {
+      imageUrls = req.files.map(file => file.path || file.url || file.location);
+    }
+
     const post = new Post({
       author: req.user._id,
       title: req.body.title,
       content: req.body.content,
-      image: req.file ? req.file.path : null,	
+
+      images: imageUrls.length > 0 ? imageUrls : [],
     });
 
     await post.save();
 
-    // ✅ Populate author before sending response
     await post.populate("author", "username email profilePicture");
 
     res.status(201).json(post);
@@ -27,10 +35,22 @@ export const createPost = async (req, res) => {
   }
 };
 
-// ✅ Get all posts (Newest first)
+// ✅ Get posts (Newest first with optional limit)
 export const getPosts = async (req, res) => {
   try {
-    const posts = await Post.find({})
+    const limit = parseInt(req.query.limit) || 10;
+    const lastPostId = req.query.lastPostId; // NEW: ID of last post from previous fetch
+
+    let query = {};
+    if (lastPostId) {
+      // Fetch posts created before the lastPostId
+      const lastPost = await Post.findById(lastPostId);
+      if (lastPost) {
+        query = { createdAt: { $lt: lastPost.createdAt } };
+      }
+    }
+
+    const posts = await Post.find(query)
       .populate('author', 'username profilePicture')
       .populate('likes', 'username profilePicture')
       .populate({
@@ -49,7 +69,8 @@ export const getPosts = async (req, res) => {
         path: 'comments.recomments.likes',
         select: 'username profilePicture'
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(limit);
 
     res.json(posts);
   } catch (error) {
@@ -101,6 +122,25 @@ export const toggleLike = async (req, res) => {
         path: "comments.user",
         select: "username email profilePicture"
       });
+	 if (!hasLiked) {
+  await createNotification({
+    recipient: post.author,
+    sender: req.user._id,
+    type: "LIKE",
+    post: post._id
+  });
+
+ const author = await User.findById(post.author._id || post.author);
+const liker = await User.findById(req.user._id);
+
+if (author?.pushSubscription) {
+  await sendPushNotification(author._id, {
+    title: "New Like ❤️",
+    body: `${liker.username} liked your post`,
+    url: `/post/${post._id}`
+  });
+} 
+} 
 
 	  if (!hasLiked) {
   await notifyLike(
@@ -139,6 +179,23 @@ export const addComment = async (req, res) => {
     // Step 2: push comment
 post.comments.push({ user: req.user._id, text });
 await post.save();
+	  await createNotification({
+  recipient: post.author,
+  sender: req.user._id,
+  type: "COMMENT",
+  post: post._id
+});
+
+ const author = await User.findById(post.author._id || post.author);
+const commenter = await User.findById(req.user._id);
+
+if (author?.pushSubscription) {
+  await sendPushNotification(author._id, {
+    title: "New Comment 💬",
+    body: `${commenter.username} commented on your post`,
+    url: `/post/${post._id}`
+  });
+}
 
 await notifyComment(
   post.author,
@@ -164,7 +221,7 @@ await notifyComment(
 export const updatePost = async (req, res) => {
   try {
     const { id } = req.params;
-    const { content, text, removeImage } = req.body;
+    const { content, text, removeImages } = req.body;
 
     const post = await Post.findById(id);
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -173,37 +230,40 @@ export const updatePost = async (req, res) => {
       return res.status(403).json({ error: "Not authorized" });
     }
 
-    // Handle image removal
-    if (removeImage === "true") {
-      if (post.image) {
-        const publicId = post.image.split('/').pop().split('.')[0];
+    // Ensure images array exists
+    if (!post.images) post.images = [];
+
+    // ✅ Remove selected images
+    if (removeImages) {
+      const imagesToRemove = Array.isArray(removeImages)
+        ? removeImages
+        : [removeImages];
+
+      for (const imageUrl of imagesToRemove) {
         try {
-          await cloudinary.uploader.destroy(publicId);
-        } catch (cloudinaryError) {
-          // Continue even if Cloudinary deletion fails
-        }
-        post.image = null;
-      }
-    }
-    // Handle new image upload
-    else if (req.file) {
-      // Delete old image from Cloudinary if exists
-      if (post.image) {
-        const publicId = post.image.split('/').pop().split('.')[0];
-        try {
-          await cloudinary.uploader.destroy(publicId);
-        } catch (cloudinaryError) {
-          // Continue even if Cloudinary deletion fails
+          const publicId = imageUrl.split("/").slice(-1)[0].split(".")[0];
+          await cloudinary.uploader.destroy(`infinity-platform/posts/${publicId}`);
+        } catch (err) {
+          console.error("Cloudinary delete failed:", err.message);
         }
       }
-      post.image = req.file.path;
+
+      post.images = post.images.filter(img => !imagesToRemove.includes(img));
     }
 
-    // Update text content
-    if (content || text) post.content = content || text;
+    // ✅ Add new uploaded images
+    if (req.files && req.files.length > 0) {
+      const newImages = req.files.map(file => file.path);
+      post.images.push(...newImages);
+    }
+
+    // ✅ Update text content
+    if (content || text) {
+      post.content = content || text;
+    }
 
     await post.save();
-    
+
     await post.populate([
       { path: "author", select: "username email profilePicture" },
       { path: "comments.user", select: "username profilePicture" },
@@ -211,6 +271,7 @@ export const updatePost = async (req, res) => {
     ]);
 
     res.status(200).json({ message: "Post updated", post });
+
   } catch (error) {
     console.error("Update error:", error);
     res.status(500).json({ error: "Server error updating post" });
@@ -221,17 +282,54 @@ export const updatePost = async (req, res) => {
 export const deletePost = async (req, res) => {
   try {
     const { id } = req.params;
+
     const post = await Post.findById(id);
 
     if (!post) return res.status(404).json({ error: "Post not found" });
-    if (post.author.toString() !== req.userId.toString())
+
+    if (post.author.toString() !== req.userId.toString()) {
       return res.status(403).json({ error: "Not authorized" });
+    }
 
+    // ✅ Delete all post images from Cloudinary
+    if (post.images && post.images.length > 0) {
+      for (const imageUrl of post.images) {
+        try {
+          const filename = imageUrl.split("/").pop();
+          const publicId = filename.substring(0, filename.lastIndexOf("."));
 
+          await cloudinary.uploader.destroy(`infinity-platform/posts/${publicId}`);
+        } catch (cloudinaryError) {
+          console.error("Cloudinary delete failed:", cloudinaryError.message);
+          
+        }
+      }
+    }
+
+    // ✅ Delete post document
     await post.deleteOne();
+
     res.status(200).json({ message: "Post deleted successfully" });
+
   } catch (error) {
     console.error("❌ Delete error:", error);
     res.status(500).json({ error: "Server error deleting post" });
+  }
+};
+
+export const getSinglePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .populate("author", "username profilePicture")
+      .populate("likes", "username")
+      .populate("comments.user", "username profilePicture");
+
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    res.json({ post });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 };

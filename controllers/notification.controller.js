@@ -1,6 +1,5 @@
-// controllers/notificationController.js
 import Notification from "../models/Notification.js";
-
+import User from "../models/user.js";
 /**
  * Get notifications for the current user
  */
@@ -10,22 +9,55 @@ export const getMyNotifications = async (req, res) => {
       recipient: req.user._id
     })
       .populate("sender", "username profilePicture")
+      .populate("post", "_id content image")
       .sort({ createdAt: -1 })
-      .limit(30); // latest 30 notifications
+      .limit(30);
 
-    res.json({ notifications });
+    const safeNotifications = notifications.map(n => ({
+      ...n.toObject(),
+      post: n.post || null,
+      sender: n.sender || {
+        _id: "unknown",
+        username: "Unknown User",
+        profilePicture: ""
+      }
+    }));
+
+    res.json({ notifications: safeNotifications });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
+/**
+ * Get unread notifications count (for red badge)
+ */
+export const getUnreadCount = async (req, res) => {
+  try {
+    const count = await Notification.countDocuments({
+      recipient: req.user._id,
+      read: false // ✅ fixed
+    });
+
+    res.json({ count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/**
+ * Mark single notification as read
+ */
 export const markNotificationRead = async (req, res) => {
   try {
     const notificationId = req.params.id;
 
-    const notification = await Notification.findByIdAndUpdate(
-      notificationId,
-      { isRead: true },
+    const notification = await Notification.findOneAndUpdate(
+      {
+        _id: notificationId,
+        recipient: req.user._id // ✅ security fix
+      },
+      { read: true }, // ✅ fixed field
       { new: true }
     );
 
@@ -40,16 +72,41 @@ export const markNotificationRead = async (req, res) => {
   }
 };
 
+/**
+ * Mark all notifications as read
+ */
 export const markAllNotificationsRead = async (req, res) => {
   try {
     await Notification.updateMany(
-      { recipient: req.user._id, isRead: false },
-      { isRead: true }
+      {
+        recipient: req.user._id,
+        read: false 
+      },
+      {
+        read: true
+      }
     );
 
     res.json({ message: "All notifications marked as read" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const savePushSubscription = async (req, res) => {
+  try {
+    console.log("savePushSubscription called");
+    console.log("User:", req.user._id);
+    console.log("Subscription:", req.body.subscription);
+
+    await User.findByIdAndUpdate(req.user._id, {
+      pushSubscription: req.body.subscription
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("savePushSubscription error:", err);
+    res.status(500).json({ error: err.message });
   }
 };

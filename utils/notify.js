@@ -7,7 +7,7 @@ export const notifyFollow = async (recipientId, senderId) => {
     recipient: recipientId,
     sender: senderId,
     type: "FOLLOW",
-    message: "started following you 👀"
+    message: "started following you"
   });
 };
 
@@ -19,7 +19,7 @@ export const notifyLike = async (postOwnerId, senderId, postId) => {
     sender: senderId,
     type: "LIKE",
     post: postId,
-    message: "liked your post ❤️"
+    message: "liked your post"
   });
 };
 
@@ -31,6 +31,6 @@ export const notifyComment = async (postOwnerId, senderId, postId) => {
     sender: senderId,
     type: "COMMENT",
     post: postId,
-    message: "commented on your post 💬"
+    message: "commented on your post"
   });
 };

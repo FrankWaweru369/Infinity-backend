@@ -1,5 +1,6 @@
 import User from "../models/user.js";
 import Notification from "../models/Notification.js";
+import { createNotification } from "../services/notificationService.js";
 
 // ➕ Follow a user
 export const followUser = async (req, res) => {
@@ -29,15 +30,24 @@ export const followUser = async (req, res) => {
     await targetUser.save();
     await currentUser.save();
 
-    // ✅ Create a notification for the followed user
-    await Notification.create({
-      recipient: targetUserId,
-      sender: currentUserId,
-      type: "FOLLOW",
-      message: `${currentUser.username} started following you`
+    // In-app notification
+    await createNotification({
+      recipient: targetUser._id,
+      sender: currentUser._id,
+      type: "FOLLOW"
     });
 
+    // Push notification
+    if (targetUser?.pushSubscription) {
+      await sendPushNotification(targetUser._id, {
+        title: "New Follower 👤",
+        body: `${currentUser.username} started following you`,
+        url: `/profile/${currentUser.username}`
+      });
+    }
+
     res.json({ message: "Followed successfully" });
+
   } catch (err) {
     console.error("❌ Follow error:", err);
     res.status(500).json({ error: "Server error" });

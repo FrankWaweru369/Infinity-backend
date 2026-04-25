@@ -24,6 +24,10 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+	  pushSubscription: {
+  type: Object,
+  default: null
+},
     resetPasswordToken: { type: String },
     resetPasswordExpire: { type: Date },
 
