@@ -9,6 +9,12 @@ import {
   updatePost,
   deletePost,
   getSinglePost,
+  addPrivateFeedback,
+  getPrivateFeedbacks,
+  revokePersonalPostAccess,
+  destroyPersonalPost,
+  revokeAllInviteLinks,
+  sendPrivateFeedback,
 } from "../controllers/post.controller.js";
 import {
   likePostComment,
@@ -16,6 +22,7 @@ import {
   addPostRecomment,
 } from "../controllers/comment.controller.js";
 import { storage } from "../config/cloudinary.js";
+import canViewPersonalPost from "../middleware/canViewPersonalPost.js";
 
 const router = express.Router();
 
@@ -37,6 +44,45 @@ router.put("/:postId/comments/:commentId/like", protect, likePostComment);
 router.post("/:postId/comments/:commentId/recomment", protect, addPostRecomment);
 router.put("/:postId/comments/:commentId/recomments/:recommentId/like", protect, likePostRecomment);
 
-router.get("/:id", protect, getSinglePost);
+router.get(
+  "/:id",
+  protect,
+  canViewPersonalPost,
+  getSinglePost
+);
 
+router.post(
+  "/:id/private-feedback",
+  protect,
+  addPrivateFeedback
+);
+
+router.get(
+  "/:id/private-feedback",
+  protect,
+  getPrivateFeedbacks
+);
+
+router.patch(
+  "/:id/revoke-access",
+  protect,
+  revokePersonalPostAccess
+);
+
+router.delete(
+  "/:id/destroy",
+  protect,
+  destroyPersonalPost
+);
+router.delete(
+  "/:id/revoke-links",
+  protect,
+  revokeAllInviteLinks
+);
+
+router.post(
+  "/:id/feedback",
+  protect,
+  sendPrivateFeedback
+);
 export default router;

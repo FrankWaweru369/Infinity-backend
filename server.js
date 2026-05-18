@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import path from "path";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import {analyticsMiddleware} from "./middleware/analyticsMiddleware.js";
+import messageRoutes from "./routes/message.routes.js";
 
 import { fileURLToPath } from "url";
 
@@ -20,7 +21,7 @@ import commentRoutes from './routes/comment.routes.js';
 import notificationRoutes from "./routes/notification.routes.js";
 import { startRandomSuggestionJob } from "./jobs/randomSuggestionJob.js";
 import { startInactiveReminderJob } from "./jobs/inactiveReminderJob.js";
-
+import cleanupDestroyedPosts from "./jobs/cleanupDestroyedPosts.js";
 
 dotenv.config();
 const app = express();
@@ -29,6 +30,7 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+setInterval(cleanupDestroyedPosts, 60 * 1000);
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -70,9 +72,10 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/videos", videoOptimizerRoutes);
 app.use('/api', commentRoutes);
 app.use("/api/notifications", notificationRoutes);
-
+app.use("/api/messages", messageRoutes);
 startRandomSuggestionJob();
 startInactiveReminderJob();
+
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))

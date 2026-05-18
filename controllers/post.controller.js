@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Post from "../models/post.js";
 import User from "../models/user.js";
 import path from "path";
@@ -11,71 +12,196 @@ export const createPost = async (req, res) => {
   try {
     let imageUrls = [];
 
-    // ✅ If using multer + cloudinary OR local files
     if (req.files && req.files.length > 0) {
-      imageUrls = req.files.map(file => file.path || file.url || file.location);
+      imageUrls = req.files.map(
+        (file) => file.path || file.url || file.location
+      );
     }
+
+    const visibility = req.body.visibility || "public";
+
+    const allowLikes =
+      req.body.allowLikes !== undefined
+        ? req.body.allowLikes === "true"
+        : true;
+
+    const allowComments =
+      req.body.allowComments !== undefined
+        ? req.body.allowComments === "true"
+        : true;
+
+    const allowRecomments =
+      req.body.allowRecomments !== undefined
+        ? req.body.allowRecomments === "true"
+        : true;
+
+    let allowedViewers = [];
+
+    if (req.body.allowedViewers) {
+      try {
+        allowedViewers = JSON.parse(req.body.allowedViewers);
+      } catch {
+        allowedViewers = [];
+      }
+    }
+
+    let autoDestructAt = null;
+
+    if (req.body.autoDestructAt) {
+      autoDestructAt = new Date(req.body.autoDestructAt);
+    }
+
+    // ✅ FINAL RULES (NO REASSIGNMENT LATER)
+    const finalAllowLikes =
+      visibility === "private" ? false : allowLikes;
+
+    const finalAllowComments =
+      visibility === "private" ? false : allowComments;
+
+    const finalAllowRecomments =
+      visibility === "private" ? false : allowRecomments;
 
     const post = new Post({
       author: req.user._id,
       title: req.body.title,
       content: req.body.content,
+      images: imageUrls,
+      visibility,
 
-      images: imageUrls.length > 0 ? imageUrls : [],
+      allowLikes: finalAllowLikes,
+      allowComments: finalAllowComments,
+      allowRecomments: finalAllowRecomments,
+
+      allowedViewers,
+      autoDestructAt,
     });
 
     await post.save();
+
+    // 👤 Personal post notifications
+    if (visibility === "personal" && allowedViewers.length > 0) {
+      for (const viewerId of allowedViewers) {
+        await createNotification({
+          recipient: viewerId,
+          sender: req.user._id,
+          type: "PERSONAL_POST",
+          post: post._id,
+        });
+
+        const viewer = await User.findById(viewerId);
+
+        if (viewer?.pushSubscription) {
+          await sendPushNotification(viewerId, {
+            title: "Personal Post 👤",
+            body: `${req.user.username} shared a personal post with you`,
+            url: `/post/${post._id}`,
+          });
+        }
+      }
+    }
 
     await post.populate("author", "username email profilePicture");
 
     res.status(201).json(post);
   } catch (error) {
     console.error("❌ Create post error:", error);
-    res.status(500).json({ message: "Server error creating post" });
+    res.status(500).json({
+      message: "Server error creating post",
+    });
   }
 };
 
 // ✅ Get posts (Newest first with optional limit)
 export const getPosts = async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 10;
-    const lastPostId = req.query.lastPostId; // NEW: ID of last post from previous fetch
 
-    let query = {};
-    if (lastPostId) {
-      // Fetch posts created before the lastPostId
+    const limit = parseInt(req.query.limit) || 10;
+
+    const lastPostId = req.query.lastPostId;
+
+    let query = {
+  destroyed: { $ne: true },
+
+  $or: [
+
+    // 🌍 Public posts
+    {
+      $or: [
+        { visibility: "public" },
+        { visibility: { $exists: false } },
+      ],
+    },
+
+    // 🔒 Private posts
+    {
+      visibility: "private",
+    },
+
+    // 👤 Personal posts user owns
+    {
+      visibility: "personal",
+      author: req.user._id,
+    },
+
+    // 👤 Personal posts user allowed to see
+    {
+      visibility: "personal",
+      allowedViewers: req.user._id,
+    },
+  ],
+};
+
+    // ✅ Pagination
+    if (
+      lastPostId &&
+      lastPostId !== "undefined" &&
+      mongoose.Types.ObjectId.isValid(lastPostId)
+    ) {
+
       const lastPost = await Post.findById(lastPostId);
+
       if (lastPost) {
-        query = { createdAt: { $lt: lastPost.createdAt } };
+        query.createdAt = {
+          $lt: lastPost.createdAt,
+        };
       }
     }
 
     const posts = await Post.find(query)
-      .populate('author', 'username profilePicture')
-      .populate('likes', 'username profilePicture')
+      .populate("author", "username profilePicture")
+      .populate("likes", "username profilePicture")
       .populate({
-        path: 'comments.user',
-        select: 'username profilePicture'
+        path: "comments.user",
+        select: "username profilePicture",
       })
       .populate({
-        path: 'comments.likes',
-        select: 'username profilePicture'
+        path: "comments.likes",
+        select: "username profilePicture",
       })
       .populate({
-        path: 'comments.recomments.user',
-        select: 'username profilePicture'
+        path: "comments.recomments.user",
+        select: "username profilePicture",
       })
       .populate({
-        path: 'comments.recomments.likes',
-        select: 'username profilePicture'
+        path: "comments.recomments.likes",
+        select: "username profilePicture",
       })
+      .populate({
+  path: "privateFeedback.user",
+  select: "username profilePicture",
+})
       .sort({ createdAt: -1 })
       .limit(limit);
 
     res.json(posts);
+
   } catch (error) {
-    console.error('Get posts error:', error);
-    res.status(500).json({ error: 'Server error' });
+
+    console.error("Get posts error:", error);
+
+    res.status(500).json({
+      error: "Server error",
+    });
   }
 };
 
@@ -92,6 +218,11 @@ export const toggleLike = async (req, res) => {
         message: "Post not found",
         code: "POST_NOT_FOUND"
       });
+	    if (!post.allowLikes) {
+  return res.status(403).json({
+    message: "Likes disabled for this post",
+  });
+}
     }
     
     const hasLiked = post.likes.includes(userId);
@@ -174,7 +305,14 @@ export const addComment = async (req, res) => {
 
     // Step 1: find the post first
     const post = await Post.findById(req.params.id);
-    if (!post) return res.status(404).json({ message: "Post not found" });
+    if (!post) return res.status(404).json({ message: "Post not found" })
+
+	  if (!post.allowComments) {
+  return res.status(403).json({
+    message: "Comments disabled for this post",
+  });
+}
+	  ;
 
     // Step 2: push comment
 post.comments.push({ user: req.user._id, text });
@@ -326,10 +464,323 @@ export const getSinglePost = async (req, res) => {
 
     if (!post) {
       return res.status(404).json({ message: "Post not found" });
+
+	if (
+  post.visibility === "personal" &&
+  post.author._id.toString() !== req.user._id.toString() &&
+  !post.allowedViewers.some(
+    (id) => id.toString() === req.user._id.toString()
+  )
+) {
+  return res.status(403).json({
+    message: "Access denied",
+  });
+}
     }
+
 
     res.json({ post });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+export const addPrivateFeedback = async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text?.trim()) {
+      return res.status(400).json({
+        message: "Feedback text is required",
+      });
+    }
+
+    const post = await Post.findById(req.params.id)
+      .populate("author", "username profilePicture");
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // 🔒 Only private posts
+    if (post.visibility !== "private") {
+      return res.status(400).json({
+        message: "Private feedback only allowed on private posts",
+      });
+    }
+
+    // ➕ Add feedback
+    post.privateFeedbacks.push({
+      sender: req.user._id,
+      text,
+    });
+
+    await post.save();
+
+    // 🔔 Notify owner
+    if (
+      post.author._id.toString() !== req.user._id.toString()
+    ) {
+      await createNotification({
+        recipient: post.author._id,
+        sender: req.user._id,
+        type: "PRIVATE_FEEDBACK",
+        post: post._id,
+      });
+
+      const author = await User.findById(post.author._id);
+      const sender = await User.findById(req.user._id);
+
+      if (author?.pushSubscription) {
+        await sendPushNotification(author._id, {
+          title: "Private Feedback 🔒",
+          body: `${sender.username} sent private feedback`,
+          url: `/post/${post._id}`,
+        });
+      }
+    }
+
+    // ✅ Return only allowed feedbacks
+    const visibleFeedbacks = post.privateFeedbacks.filter(
+      (feedback) =>
+        feedback.sender.toString() === req.user._id.toString() ||
+        post.author._id.toString() === req.user._id.toString()
+    );
+
+    res.status(201).json({
+      message: "Private feedback added",
+      feedbacks: visibleFeedbacks,
+    });
+
+  } catch (error) {
+    console.error("❌ Private feedback error:", error);
+
+    res.status(500).json({
+      message: "Server error adding feedback",
+    });
+  }
+};
+
+export const getPrivateFeedbacks = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .populate(
+        "privateFeedbacks.sender",
+        "username profilePicture"
+      )
+      .populate(
+        "author",
+        "username profilePicture"
+      );
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // 🔒 Only private posts
+    if (post.visibility !== "private") {
+      return res.status(400).json({
+        message: "This is not a private post",
+      });
+    }
+
+    // 👤 Only owner OR sender sees feedbacks
+    const filtered = post.privateFeedbacks.filter(
+      (feedback) =>
+        feedback.sender._id.toString() === req.user._id.toString() ||
+        post.author._id.toString() === req.user._id.toString()
+    );
+
+    res.json(filtered);
+
+  } catch (error) {
+    console.error("❌ Get feedback error:", error);
+
+    res.status(500).json({
+      message: "Server error fetching feedbacks",
+    });
+  }
+};
+
+export const revokePersonalPostAccess = async (req, res) => {
+  try {
+    const { viewerId } = req.body;
+
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // 👤 Only personal posts
+    if (post.visibility !== "personal") {
+      return res.status(400).json({
+        message: "Not a personal post",
+      });
+    }
+
+    // 🔒 Only owner
+    if (
+      post.author.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({
+        message: "Not authorized",
+      });
+    }
+
+    // ❌ Remove viewer
+    post.allowedViewers =
+      post.allowedViewers.filter(
+        (id) => id.toString() !== viewerId
+      );
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: "Viewer access revoked",
+      allowedViewers: post.allowedViewers,
+    });
+
+  } catch (error) {
+    console.error(
+      "❌ Revoke access error:",
+      error
+    );
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+export const destroyPersonalPost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    // 👤 Only personal posts
+    if (post.visibility !== "personal") {
+      return res.status(400).json({
+        message: "Not a personal post",
+      });
+    }
+
+    // 🔒 Only owner
+    if (
+      post.author.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({
+        message: "Not authorized",
+      });
+    }
+
+    // 💥 Destroy
+    post.destroyed = true;
+
+    // Optional:
+    // remove viewers
+    post.allowedViewers = [];
+
+    // Optional:
+    // wipe interactions
+    post.likes = [];
+    post.comments = [];
+    post.privateFeedbacks = [];
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: "Personal post destroyed",
+    });
+
+  } catch (error) {
+    console.error(
+      "❌ Destroy post error:",
+      error
+    );
+
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+export const revokeAllInviteLinks = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+
+    if (
+      post.author.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({
+        message: "Not authorized",
+      });
+    }
+
+    post.inviteTokens = [];
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: "All invite links revoked",
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Server error",
+    });
+  }
+};
+
+export const sendPrivateFeedback = async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    const post = await Post.findById(req.params.id);
+
+    if (!post) {
+      return res.status(404).json({
+        message: "Post not found",
+      });
+    }
+
+    if (post.visibility !== "private") {
+      return res.status(400).json({
+        message: "This post does not accept private feedback",
+      });
+    }
+
+    post.privateFeedback.push({
+      user: req.user._id,
+      text,
+    });
+
+    await post.save();
+
+    res.json({
+      success: true,
+      message: "Feedback sent",
+    });
+
+  } catch (error) {
+    console.error("Private feedback error:", error);
+
+    res.status(500).json({
+      message: "Server error",
+    });
   }
 };
