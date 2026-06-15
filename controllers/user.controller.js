@@ -148,3 +148,52 @@ export const updateProfile = async (req, res) => {
     return res.status(500).json({ message: "Server error" });
   }
 };
+
+export const getChatConnections = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id)
+      .populate("followers", "username profilePicture")
+      .populate("following", "username profilePicture");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const followers = user.followers || [];
+    const following = user.following || [];
+
+    const usersMap = new Map();
+
+    // Add following users
+    following.forEach((u) => {
+      usersMap.set(u._id.toString(), {
+        _id: u._id,
+        username: u.username,
+        profilePicture: u.profilePicture,
+        isMutual: followers.some(
+          (f) => f._id.toString() === u._id.toString()
+        ),
+      });
+    });
+
+    // Add followers not already in following
+    followers.forEach((u) => {
+      if (!usersMap.has(u._id.toString())) {
+        usersMap.set(u._id.toString(), {
+          _id: u._id,
+          username: u.username,
+          profilePicture: u.profilePicture,
+          isMutual: false,
+        });
+      }
+    });
+
+    res.status(200).json(Array.from(usersMap.values()));
+  } catch (error) {
+    console.error("Get chat connections error:", error);
+    res.status(500).json({
+      message: "Failed to load chat users",
+      error: error.message,
+    });
+  }
+};

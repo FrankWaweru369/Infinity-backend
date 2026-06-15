@@ -15,6 +15,7 @@ import {
   destroyPersonalPost,
   revokeAllInviteLinks,
   sendPrivateFeedback,
+  getUserPosts,
 } from "../controllers/post.controller.js";
 import {
   likePostComment,
@@ -31,6 +32,7 @@ const upload = multer({ storage });
 // ✅ POSTS (multi-image enabled)
 router.post("/", protect, upload.any(), createPost);
 router.get("/", protect, getPosts);
+router.get("/user/:username", protect, getUserPosts);
 router.put("/:id/like", protect, toggleLike);
 router.post("/:id/comment", protect, addComment);
 

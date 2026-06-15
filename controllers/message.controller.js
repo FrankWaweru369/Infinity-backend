@@ -1,4 +1,5 @@
 import Message from "../models/message.js";
+import PageVisit from "../models/PageVisit.js";
 
 // POST /api/messages
 export const sendMessage = async (req, res) => {
@@ -42,21 +43,74 @@ export const getConversation = async (req, res) => {
     const otherUserId = req.params.userId;
 
     if (!otherUserId) {
-      return res.status(400).json({ error: "User ID required" });
+      return res.status(400).json({
+        error: "User ID required",
+      });
     }
 
     // Generate same conversationId
-    const ids = [currentUserId.toString(), otherUserId.toString()].sort();
-const conversationId = `${ids[0]}_${ids[1]}`;
+    const ids = [
+      currentUserId.toString(),
+      otherUserId.toString(),
+    ].sort();
 
-    const messages = await Message.find({ conversationId })
+    const conversationId = `${ids[0]}_${ids[1]}`;
+
+    // Fetch messages
+    const messages = await Message.find({
+      conversationId,
+    })
       .sort({ createdAt: 1 })
-      .populate("sender", "username profilePicture");
+      .populate(
+        "sender receiver",
+        "username profilePicture"
+      );
 
-    res.json(messages);
+    // 🔥 Presence / Last seen
+    const fiveMinutesAgo = new Date(
+      Date.now() - 5 * 60 * 1000
+    );
+
+    const lastVisit = await PageVisit.findOne({
+      user: otherUserId,
+    }).sort({ createdAt: -1 });
+
+    const presence = {
+      isOnline:
+        lastVisit &&
+        lastVisit.createdAt > fiveMinutesAgo,
+
+      lastActive: lastVisit?.createdAt || null,
+    };
+
+    // 👤 Get other user info safely
+    let user = null;
+
+    if (messages.length > 0) {
+      const first = messages[0];
+
+      user =
+        first.sender?._id?.toString() ===
+        currentUserId?.toString()
+          ? first.receiver
+          : first.sender;
+    }
+
+    res.json({
+      messages,
+      user,
+      presence,
+    });
+
   } catch (error) {
-    console.error("Get conversation error:", error);
-    res.status(500).json({ error: "Failed to fetch messages" });
+    console.error(
+      "Get conversation error:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Failed to fetch messages",
+    });
   }
 };
 

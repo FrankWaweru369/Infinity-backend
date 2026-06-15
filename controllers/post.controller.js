@@ -210,90 +210,89 @@ export const toggleLike = async (req, res) => {
   try {
     const postId = req.params.id;
     const userId = req.user._id;
-    
-    
+
     const post = await Post.findById(postId);
+
     if (!post) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: "Post not found",
-        code: "POST_NOT_FOUND"
+        code: "POST_NOT_FOUND",
       });
-	    if (!post.allowLikes) {
-  return res.status(403).json({
-    message: "Likes disabled for this post",
-  });
-}
     }
-    
+
+    if (!post.allowLikes) {
+      return res.status(403).json({
+        message: "Likes disabled for this post",
+      });
+    }
+
     const hasLiked = post.likes.includes(userId);
-    
-    
-    const updateOperation = hasLiked 
+
+    const updateOperation = hasLiked
       ? { $pull: { likes: userId } }
       : { $addToSet: { likes: userId } };
-    
+
     const updatedPost = await Post.findByIdAndUpdate(
       postId,
       updateOperation,
-      { new: true, runValidators: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     );
-    
+
     if (!updatedPost) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         message: "Post not found after update",
-        code: "POST_UPDATE_FAILED"
+        code: "POST_UPDATE_FAILED",
       });
     }
-    
-    
+
     const populatedPost = await Post.findById(updatedPost._id)
       .populate("author", "username email profilePicture")
       .populate("likes", "username profilePicture")
       .populate({
         path: "comments.user",
-        select: "username email profilePicture"
+        select: "username email profilePicture",
       });
-	 if (!hasLiked) {
-  await createNotification({
-    recipient: post.author,
-    sender: req.user._id,
-    type: "LIKE",
-    post: post._id
-  });
 
- const author = await User.findById(post.author._id || post.author);
-const liker = await User.findById(req.user._id);
+    // 🔔 Notify only when liking (not unliking)
+    if (!hasLiked) {
+      await notifyLike(
+        post.author,
+        userId,
+        post._id
+      );
 
-if (author?.pushSubscription) {
-  await sendPushNotification(author._id, {
-    title: "New Like ❤️",
-    body: `${liker.username} liked your post`,
-    url: `/post/${post._id}`
-  });
-} 
-} 
+      const author = await User.findById(
+        post.author._id || post.author
+      );
 
-	  if (!hasLiked) {
-  await notifyLike(
-    post.author,
-    userId,
-    post._id
-  );
-}
-    
+      const liker = await User.findById(userId);
+
+      if (author?.pushSubscription) {
+        await sendPushNotification(author._id, {
+          title: "New Like ❤️",
+          body: `${liker.username} liked your post`,
+          url: `/post/${post._id}`,
+        });
+      }
+    }
+
     res.json({
       success: true,
       message: hasLiked ? "Post unliked" : "Post liked",
       liked: !hasLiked,
       post: populatedPost,
-      likesCount: populatedPost.likes.length
+      likesCount: populatedPost.likes.length,
     });
-    
+
   } catch (err) {
     console.error("❌ Error in toggleLike:", err);
-    res.status(500).json({ 
+
+    res.status(500).json({
       message: "Error updating like",
-      code: "LIKE_ERROR"
+      code: "LIKE_ERROR",
     });
   }
 };
@@ -317,12 +316,6 @@ export const addComment = async (req, res) => {
     // Step 2: push comment
 post.comments.push({ user: req.user._id, text });
 await post.save();
-	  await createNotification({
-  recipient: post.author,
-  sender: req.user._id,
-  type: "COMMENT",
-  post: post._id
-});
 
  const author = await User.findById(post.author._id || post.author);
 const commenter = await User.findById(req.user._id);
@@ -781,6 +774,50 @@ export const sendPrivateFeedback = async (req, res) => {
 
     res.status(500).json({
       message: "Server error",
+    });
+  }
+};
+
+export const getUserPosts = async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    const limit = Number(req.query.limit) || 7;
+    const { lastPostId } = req.query;
+
+    const user = await User.findOne({ username });
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found"
+      });
+    }
+
+    let query = {
+      author: user._id
+    };
+
+    if (lastPostId) {
+      const lastPost = await Post.findById(lastPostId);
+
+      if (lastPost) {
+        query.createdAt = {
+          $lt: lastPost.createdAt
+        };
+      }
+    }
+
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("author")
+      .populate("comments.user");
+
+    res.json(posts);
+
+  } catch (err) {
+    res.status(500).json({
+      message: err.message
     });
   }
 };
