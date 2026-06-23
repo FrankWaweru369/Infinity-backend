@@ -169,3 +169,58 @@ export const getInbox = async (req, res) => {
     res.status(500).json({ error: "Failed to load inbox" });
   }
 };
+
+export const getUnreadCount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const messages = await Message.find({
+      receiver: userId,
+      seen: false,
+    });
+
+
+    res.json({
+      count: messages.length,
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      message: err.message,
+    });
+  }
+};
+
+export const markMessagesSeen = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { userId: senderId } = req.params;
+
+
+    await Message.updateMany(
+      {
+        sender: senderId,
+        receiver: userId,
+        seen: false,
+      },
+      {
+        $set: {
+          seen: true,
+        },
+      }
+    );
+
+
+    res.json({
+      success: true,
+    });
+
+
+  } catch (err) {
+
+    res.status(500).json({
+      message: err.message,
+    });
+
+  }
+};

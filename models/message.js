@@ -28,7 +28,7 @@ const messageSchema = new mongoose.Schema(
       default: false,
     },
 
-    // Optional but powerful for future
+
     conversationId: {
       type: String,
       index: true,

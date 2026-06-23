@@ -808,10 +808,12 @@ export const getUserPosts = async (req, res) => {
     }
 
     const posts = await Post.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .populate("author")
-      .populate("comments.user");
+  .sort({ createdAt: -1 })
+  .limit(limit)
+  .populate("author")
+  .populate("likes")
+  .populate("comments.user")
+  .populate("privateFeedback.user");
 
     res.json(posts);
 
